@@ -1,0 +1,17 @@
+.progress {
+    height: 25px;
+    margin: 20px 0;
+}
+
+.progress-bar {
+    transition: width 0.3s ease;
+}
+
+.card {
+    margin-bottom: 20px;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+}
+
+.form-control {
+    margin-bottom: 15px;
+}

@@ -1,0 +1,88 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="container mt-4">
+    <h2>Dataset Preprocessing - Session {{ session_id }}</h2>
+    <div id="preprocessing-progress" class="mb-4">
+        <div class="progress">
+            <div class="progress-bar" role="progressbar" style="width: 0%"></div>
+        </div>
+        <div id="progress-message" class="mt-2"></div>
+    </div>
+    
+    <form id="preprocessing-config">
+        <div class="card mb-3">
+            <div class="card-header">Image Processing Options</div>
+            <div class="card-body">
+                <div class="row">
+                    <div class="col-md-4">
+                        <label>Image Size</label>
+                        <input type="number" name="image_width" value="224" class="form-control">
+                        <input type="number" name="image_height" value="224" class="form-control mt-2">
+                    </div>
+                    <div class="col-md-4">
+                        <div class="form-check">
+                            <input class="form-check-input" type="checkbox" name="random_hflip" checked>
+                            <label class="form-check-label">Random Horizontal Flip</label>
+                        </div>
+                        <div class="form-check">
+                            <input class="form-check-input" type="checkbox" name="random_rotate" checked>
+                            <label class="form-check-label">Random Rotation (±10°)</label>
+                        </div>
+                    </div>
+                    <div class="col-md-4">
+                        <label>Normalization</label>
+                        <div class="input-group mb-2">
+                            <span class="input-group-text">Mean</span>
+                            <input type="text" name="normalization_mean" 
+                                   value="0.485, 0.456, 0.406" class="form-control">
+                        </div>
+                        <div class="input-group">
+                            <span class="input-group-text">Std</span>
+                            <input type="text" name="normalization_std" 
+                                   value="0.229, 0.224, 0.225" class="form-control">
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <button type="submit" class="btn btn-primary" id="start-processing">
+            Start Preprocessing
+        </button>
+    </form>
+</div>
+
+<script>
+document.getElementById('preprocessing-config').onsubmit = async (e) => {
+    e.preventDefault();
+    const formData = new FormData(e.target);
+    const config = Object.fromEntries(formData.entries());
+    
+    const response = await fetch(`/api/preprocess/{{ session_id }}`, {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify(config)
+    });
+    
+    if (response.ok) {
+        // Setup WebSocket for real-time updates
+        const socket = new WebSocket(`ws://${window.location.host}/ws/progress/{{ session_id }}`);
+        
+        socket.onmessage = (event) => {
+            const data = JSON.parse(event.data);
+            updateProgress(data);
+        };
+    }
+};
+
+function updateProgress(data) {
+    const progressBar = document.querySelector('.progress-bar');
+    const progressMessage = document.getElementById('progress-message');
+    
+    progressBar.style.width = `${data.percentage}%`;
+    progressBar.textContent = `${Math.round(data.percentage)}%`;
+    progressMessage.textContent = data.message;
+}
+</script>
+{% endblock %}
