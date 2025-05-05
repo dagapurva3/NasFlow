@@ -1,2 +1,6 @@
 .venv
 data/
+venv/
+mlruns/
+dataset/
+runs/
