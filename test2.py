@@ -1,7 +1,7 @@
-
 import gc
 import logging
 import os
+
 import matplotlib.pyplot as plt
 import mlflow
 import numpy as np
@@ -15,7 +15,7 @@ import torchvision.transforms as transforms
 from PIL import Image
 from sklearn.metrics import accuracy_score, confusion_matrix, f1_score
 from sklearn.model_selection import train_test_split
-from torch.utils.data import Dataset, DataLoader
+from torch.utils.data import DataLoader, Dataset
 from torch.utils.tensorboard import SummaryWriter
 
 # ------------------- Logging -------------------

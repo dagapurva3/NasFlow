@@ -1,7 +1,7 @@
-
 import gc
 import logging
 import os
+
 import matplotlib.pyplot as plt
 import mlflow
 import numpy as np
@@ -18,8 +18,8 @@ from transformers import (
     AutoImageProcessor,
     AutoModelForImageClassification,
     Trainer,
-    TrainingArguments,
     TrainerCallback,
+    TrainingArguments,
 )
 
 # ------------------- Logging -------------------
@@ -38,6 +38,7 @@ if torch.cuda.is_available():
     logger.info(f"CUDA available. Using GPU: {torch.cuda.get_device_name(0)}")
 else:
     logger.warning("CUDA not available. Using CPU. Training may be slower.")
+
 
 # ------------------- Dataset Prep -------------------
 def create_label_csv(image_dir, output_dir, train_ratio=0.8):
@@ -62,6 +63,7 @@ def create_label_csv(image_dir, output_dir, train_ratio=0.8):
     logger.info(f"Saved {len(train_df)} train and {len(val_df)} validation samples.")
     logger.info(f"Class map: {class_map}")
 
+
 # ------------------- Visualization -------------------
 def plot_confusion_matrix(y_true, y_pred, class_names=None, figsize=(10, 8)):
     cm = confusion_matrix(y_true, y_pred)
@@ -80,14 +82,17 @@ def plot_confusion_matrix(y_true, y_pred, class_names=None, figsize=(10, 8)):
     plt.tight_layout()
     return fig
 
+
 # ------------------- Dataset Class -------------------
 class CustomImageDataset(Dataset):
     def __init__(self, image_dir, csv_path, processor):
         self.image_dir = image_dir
         self.annotations = pd.read_csv(csv_path)
         self.processor = processor
+
     def __len__(self):
         return len(self.annotations)
+
     def __getitem__(self, idx):
         img_path = os.path.join(self.image_dir, self.annotations.iloc[idx, 0])
         image = Image.open(img_path).convert("RGB")
@@ -96,6 +101,7 @@ class CustomImageDataset(Dataset):
         encodings = {k: v.squeeze() for k, v in encodings.items()}
         encodings["labels"] = torch.tensor(label)
         return encodings
+
 
 # ------------------- Metric Callback -------------------
 class LiveMetricsLogger(TrainerCallback):
@@ -108,7 +114,10 @@ class LiveMetricsLogger(TrainerCallback):
             for k, v in logs.items():
                 if isinstance(v, (int, float)):
                     self.writer.add_scalar(f"live/{k}", v, state.global_step)
-                    mlflow.log_metric(f"trial{self.trial_num}_{k}", v, step=state.global_step)
+                    mlflow.log_metric(
+                        f"trial{self.trial_num}_{k}", v, step=state.global_step
+                    )
+
 
 # ------------------- Metrics -------------------
 def compute_metrics(p):
@@ -118,6 +127,7 @@ def compute_metrics(p):
         "accuracy": accuracy_score(labels, preds),
         "f1": f1_score(labels, preds, average="weighted"),
     }
+
 
 # ------------------- Optuna Objective -------------------
 def objective(trial):
@@ -192,6 +202,7 @@ def objective(trial):
         logger.info(f"Finished training with metrics: {metrics}")
 
     return metrics["eval_accuracy"]
+
 
 # ------------------- Main -------------------
 if __name__ == "__main__":
