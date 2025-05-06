@@ -3,6 +3,7 @@ import magic
 import zipfile
 import tarfile
 from config import ALLOWED_EXTENSIONS
+import json
 
 def allowed_file(filename):
     return '.' in filename and \

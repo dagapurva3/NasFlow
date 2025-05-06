@@ -4,3 +4,4 @@ venv/
 mlruns/
 dataset/
 runs/
+.vscode/
