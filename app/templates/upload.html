@@ -1,13 +1,11 @@
-{% extends "base.html" %}
 
-{% block content %}
 <div class="card">
     <div class="card-header">Upload Dataset</div>
     <div class="card-body">
         <form id="upload-form">
             <div class="mb-3">
                 <input type="file" class="form-control" id="dataset" name="dataset" required>
-                <div class="form-text">Supported formats: ZIP, TAR, CSV, Images</div>
+                <div class="form-text">Supported formats: ZIP, TAR</div>
             </div>
             <button type="submit" class="btn btn-primary">Upload</button>
         </form>
@@ -21,4 +19,3 @@
 </div>
 
 <script src="/static/js/upload.js"></script>
-{% endblock %}

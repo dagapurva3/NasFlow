@@ -477,10 +477,10 @@ def objective(trial):
 
     # Create datasets and dataloaders
     train_dataset = CustomImageDataset(
-        "data/images/Images", "dataset/train_labels.csv", transform
+        "data_2/Images", "dataset_2/train_labels.csv", transform
     )
     val_dataset = CustomImageDataset(
-        "data/images/Images", "dataset/val_labels.csv", val_transform
+        "data_2/Images", "dataset_2/val_labels.csv", val_transform
     )
 
     train_loader = DataLoader(
@@ -580,10 +580,10 @@ if __name__ == "__main__":
     mlflow.set_experiment("cnn_nas_image_classification")
 
     logger.info("Creating CSVs from image folder...")
-    create_label_csv("data/images/Images", "dataset")
+    create_label_csv("data_2/Images", "dataset_2")
 
     logger.info("Starting NAS optimization")
-    n_jobs = 2  # Number of parallel trials
+    n_jobs = 1  # Number of parallel trials
     study = optuna.create_study(direction="maximize")
     study.optimize(objective, n_trials=10, n_jobs=n_jobs, timeout=600)
 
