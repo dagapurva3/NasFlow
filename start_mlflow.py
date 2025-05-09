@@ -17,7 +17,6 @@ def start_mlflow_server():
         raise FileNotFoundError(f"MLflow database not found at {db_path}")
     
     # Start the MLflow server with the existing sqlite database
-
     process = subprocess.Popen([
         "mlflow", "server",
         "--host", "127.0.0.1",
