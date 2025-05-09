@@ -57,22 +57,68 @@
 document.getElementById('preprocessing-config').onsubmit = async (e) => {
     e.preventDefault();
     const formData = new FormData(e.target);
-    const config = Object.fromEntries(formData.entries());
+    const config = {};
     
-    const response = await fetch(`/api/preprocess/{{ session_id }}`, {
-        method: 'POST',
-        headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify(config)
-    });
+    // Convert form data to proper types
+    for (const [key, value] of formData.entries()) {
+        if (key.startsWith('random_')) {
+            // Convert checkboxes to booleans
+            config[key] = value === 'on';
+        } else if (key.includes('_mean') || key.includes('_std')) {
+            // Convert comma-separated values to arrays
+            config[key] = value.split(',').map(v => parseFloat(v.trim()));
+        } else if (!isNaN(value)) {
+            // Convert numbers to numbers
+            config[key] = parseFloat(value);
+        } else {
+            config[key] = value;
+        }
+    }
     
-    if (response.ok) {
-        // Setup WebSocket for real-time updates
-        const socket = new WebSocket(`ws://${window.location.host}/ws/progress/{{ session_id }}`);
+    try {
+        const response = await fetch(`/api/preprocess/{{ session_id }}`, {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify(config)
+        });
         
-        socket.onmessage = (event) => {
-            const data = JSON.parse(event.data);
-            updateProgress(data);
-        };
+        if (response.ok) {
+            // Disable form submission
+            document.getElementById('start-processing').disabled = true;
+            
+            // Setup WebSocket for real-time updates
+            const socket = io('/ws');
+            
+            socket.emit('join', { session_id: '{{ session_id }}' });
+            
+            socket.on('progress', (data) => {
+                updateProgress(data);
+            });
+            
+            socket.on('completed', (data) => {
+                document.getElementById('progress-message').textContent = 'Preprocessing complete!';
+                document.getElementById('progress-message').style.color = 'green';
+                
+                // Add a button to continue to training
+                const continueBtn = document.createElement('button');
+                continueBtn.className = 'btn btn-success mt-3';
+                continueBtn.textContent = 'Continue to Training';
+                continueBtn.onclick = () => { window.location.href = data.redirect; };
+                document.getElementById('preprocessing-progress').appendChild(continueBtn);
+            });
+            
+            socket.on('error', (data) => {
+                document.getElementById('progress-message').textContent = data.message;
+                document.getElementById('progress-message').style.color = 'red';
+                document.getElementById('start-processing').disabled = false;
+            });
+        } else {
+            const errorData = await response.json();
+            throw new Error(errorData.error || 'Failed to start preprocessing');
+        }
+    } catch (error) {
+        document.getElementById('progress-message').textContent = error.message;
+        document.getElementById('progress-message').style.color = 'red';
     }
 };
 
@@ -82,6 +128,7 @@ function updateProgress(data) {
     
     progressBar.style.width = `${data.percentage}%`;
     progressBar.textContent = `${Math.round(data.percentage)}%`;
+    progressBar.setAttribute('aria-valuenow', data.percentage);
     progressMessage.textContent = data.message;
 }
 </script>
