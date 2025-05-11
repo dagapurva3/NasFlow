@@ -11,3 +11,4 @@ models/
 results/
 __pycache__/
 uploads/
+app/__pycache__/
