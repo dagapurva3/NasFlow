@@ -5,9 +5,10 @@
     <h2>Dataset Preprocessing - Session {{ session_id }}</h2>
     <div id="preprocessing-progress" class="mb-4">
         <div class="progress">
-            <div class="progress-bar" role="progressbar" style="width: 0%"></div>
+            <div id="progress-bar" class="progress-bar progress-bar-striped progress-bar-animated" 
+                 role="progressbar" style="width: 0%">0%</div>
         </div>
-        <div id="progress-message" class="mt-2"></div>
+        <div id="progress-message" class="mt-2">Configure preprocessing options and click Start</div>
     </div>
     
     <form id="preprocessing-config">
@@ -51,85 +52,133 @@
             Start Preprocessing
         </button>
     </form>
+    
+    <div id="next-actions" class="mt-3" style="display: none;">
+        <a href="/training/{{ session_id }}" class="btn btn-success">Continue to Training</a>
+    </div>
 </div>
 
 <script>
-document.getElementById('preprocessing-config').onsubmit = async (e) => {
-    e.preventDefault();
-    const formData = new FormData(e.target);
-    const config = {};
+document.addEventListener('DOMContentLoaded', function() {
+    const form = document.getElementById('preprocessing-config');
+    const startBtn = document.getElementById('start-processing');
+    const progressBar = document.getElementById('progress-bar');
+    const progressMsg = document.getElementById('progress-message');
+    const nextActions = document.getElementById('next-actions');
     
-    // Convert form data to proper types
-    for (const [key, value] of formData.entries()) {
-        if (key.startsWith('random_')) {
-            // Convert checkboxes to booleans
-            config[key] = value === 'on';
-        } else if (key.includes('_mean') || key.includes('_std')) {
-            // Convert comma-separated values to arrays
-            config[key] = value.split(',').map(v => parseFloat(v.trim()));
-        } else if (!isNaN(value)) {
-            // Convert numbers to numbers
-            config[key] = parseFloat(value);
-        } else {
-            config[key] = value;
-        }
-    }
+    // Set up Socket.IO 
+    const socket = io();
     
-    try {
-        const response = await fetch(`/api/preprocess/{{ session_id }}`, {
-            method: 'POST',
-            headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify(config)
-        });
+    // Join the room for this session
+    socket.emit('join', { session_id: '{{ session_id }}' });
+    
+    // Listen for preprocessing updates
+    socket.on('preprocessing_update', function(data) {
+        console.log('Received update:', data);
         
-        if (response.ok) {
-            // Disable form submission
-            document.getElementById('start-processing').disabled = true;
+        // Update progress bar
+        progressBar.style.width = data.progress + '%';
+        progressBar.textContent = data.progress + '%';
+        progressBar.setAttribute('aria-valuenow', data.progress);
+        
+        // Update message
+        progressMsg.textContent = data.message;
+        
+        // Handle different statuses
+        if (data.status === 'complete') {
+            // Preprocessing complete
+            progressBar.classList.remove('progress-bar-animated');
+            progressBar.classList.remove('progress-bar-striped');
+            progressBar.classList.add('bg-success');
             
-            // Setup WebSocket for real-time updates
-            const socket = io('/ws');
+            // Show next actions
+            nextActions.style.display = 'block';
             
-            socket.emit('join', { session_id: '{{ session_id }}' });
+            // Disable form
+            startBtn.disabled = true;
             
-            socket.on('progress', (data) => {
-                updateProgress(data);
-            });
+            // Auto-redirect if provided
+            if (data.redirect) {
+                setTimeout(function() {
+                    window.location.href = data.redirect;
+                }, 2000);
+            }
+        } 
+        else if (data.status === 'failed') {
+            // Preprocessing failed
+            progressBar.classList.remove('progress-bar-animated');
+            progressBar.classList.remove('progress-bar-striped');
+            progressBar.classList.add('bg-danger');
+            progressMsg.innerHTML = '<strong>Error:</strong> ' + data.message;
             
-            socket.on('completed', (data) => {
-                document.getElementById('progress-message').textContent = 'Preprocessing complete!';
-                document.getElementById('progress-message').style.color = 'green';
-                
-                // Add a button to continue to training
-                const continueBtn = document.createElement('button');
-                continueBtn.className = 'btn btn-success mt-3';
-                continueBtn.textContent = 'Continue to Training';
-                continueBtn.onclick = () => { window.location.href = data.redirect; };
-                document.getElementById('preprocessing-progress').appendChild(continueBtn);
-            });
-            
-            socket.on('error', (data) => {
-                document.getElementById('progress-message').textContent = data.message;
-                document.getElementById('progress-message').style.color = 'red';
-                document.getElementById('start-processing').disabled = false;
-            });
-        } else {
-            const errorData = await response.json();
-            throw new Error(errorData.error || 'Failed to start preprocessing');
+            // Re-enable form
+            startBtn.disabled = false;
         }
-    } catch (error) {
-        document.getElementById('progress-message').textContent = error.message;
-        document.getElementById('progress-message').style.color = 'red';
-    }
-};
-
-function updateProgress(data) {
-    const progressBar = document.querySelector('.progress-bar');
-    const progressMessage = document.getElementById('progress-message');
+    });
     
-    progressBar.style.width = `${data.percentage}%`;
-    progressBar.textContent = `${Math.round(data.percentage)}%`;
-    progressBar.setAttribute('aria-valuenow', data.percentage);
-    progressMessage.textContent = data.message;
-}
+    // Form submission handler
+    form.addEventListener('submit', async function(e) {
+        e.preventDefault();
+        
+        // Disable submit button
+        startBtn.disabled = true;
+        startBtn.textContent = 'Processing...';
+        
+        // Reset progress bar
+        progressBar.style.width = '0%';
+        progressBar.textContent = '0%';
+        progressBar.setAttribute('aria-valuenow', 0);
+        progressBar.classList.add('progress-bar-animated');
+        progressBar.classList.add('progress-bar-striped');
+        progressBar.classList.remove('bg-success');
+        progressBar.classList.remove('bg-danger');
+        
+        // Hide next actions
+        nextActions.style.display = 'none';
+        
+        // Set initial message
+        progressMsg.textContent = 'Starting preprocessing...';
+        
+        // Get form data
+        const formData = new FormData(form);
+        const config = {};
+        
+        // Convert form data to proper types
+        for (const [key, value] of formData.entries()) {
+            if (key.startsWith('random_')) {
+                // Convert checkboxes to booleans
+                config[key] = value === 'on';
+            } else if (key.includes('_mean') || key.includes('_std')) {
+                // Convert comma-separated values to arrays
+                config[key] = value.split(',').map(v => parseFloat(v.trim()));
+            } else if (!isNaN(value)) {
+                // Convert numbers to numbers
+                config[key] = parseFloat(value);
+            } else {
+                config[key] = value;
+            }
+        }
+        
+        try {
+            const response = await fetch(`/api/preprocess/{{ session_id }}`, {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify(config)
+            });
+            
+            if (!response.ok) {
+                const errorData = await response.json();
+                throw new Error(errorData.error || 'Failed to start preprocessing');
+            }
+            
+            // Processing started successfully - updates will come via Socket.IO
+        } catch (error) {
+            console.error('Error:', error);
+            progressMsg.textContent = error.message;
+            startBtn.disabled = false;
+            startBtn.textContent = 'Start Preprocessing';
+        }
+    });
+});
 </script>
 {% endblock %}

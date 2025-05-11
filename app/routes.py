@@ -6,6 +6,7 @@ import traceback
 
 from flask import jsonify, render_template, request, send_from_directory, redirect, url_for
 from werkzeug.utils import secure_filename
+from flask_socketio import join_room
 
 from app import app, executor, socketio
 
@@ -17,6 +18,7 @@ from .utils.file_handling import (
     create_processing_session
 )
 from .preprocessing.data_preprocessor import process_images
+from .ml_runner import start_ml_process, active_processes
 
 # Global variable to store extraction status
 extraction_status = {}
@@ -371,8 +373,139 @@ def on_join(data):
     session_id = data.get('session_id')
     if session_id:
         print(f"Client joined room: {session_id}")
-        socketio.join_room(session_id)
+        join_room(session_id)
 
 @app.route("/static/<path:filename>")
 def serve_static(filename):
     return send_from_directory(app.config["STATIC_FOLDER"], filename)
+
+@app.route("/mlflow-dashboard")
+def mlflow_dashboard():
+    """
+    Renders the MLflow dashboard page with embedded iframe
+    """
+    return render_template("mlflow_dashboard.html")
+
+@app.route("/training/<session_id>")
+def training(session_id):
+    """
+    Renders the ML training page for a session
+    """
+    # Get session directory
+    session_dir = os.path.join(app.config["UPLOAD_FOLDER"], session_id)
+    
+    # Check if session exists
+    if not os.path.exists(session_dir):
+        return redirect(url_for('index'))
+    
+    # Get metadata
+    try:
+        with open(os.path.join(session_dir, "metadata.json"), "r") as f:
+            metadata = json.load(f)
+    except Exception:
+        return redirect(url_for('index'))
+    
+    # Check if preprocessing is complete
+    if metadata.get("status") != "preprocessing_complete":
+        return redirect(url_for('preprocessing', session_id=session_id))
+    
+    return render_template(
+        "training.html", 
+        session_id=session_id,
+        metadata=metadata
+    )
+
+@app.route("/api/train/<session_id>", methods=["POST"])
+def start_training(session_id):
+    """
+    API endpoint to start ML training on a preprocessed dataset
+    """
+    # Get training configuration from request
+    config = request.json
+    
+    # Validate session exists
+    session_path = os.path.join(app.config["UPLOAD_FOLDER"], session_id)
+    if not os.path.exists(session_path):
+        return jsonify({"error": "Invalid session ID"}), 404
+    
+    # Load session metadata
+    try:
+        with open(os.path.join(session_path, "metadata.json"), "r") as f:
+            metadata = json.load(f)
+    except Exception:
+        return jsonify({"error": "Failed to load session metadata"}), 500
+    
+    # Validate session is ready for training
+    if metadata.get("status") != "preprocessing_complete":
+        return jsonify({"error": "Session is not ready for training"}), 400
+    
+    # Check if ML process is already running
+    if session_id in active_processes:
+        return jsonify({
+            "error": "ML process already running", 
+            "start_time": active_processes[session_id]["start_time"]
+        }), 409
+    
+    # Start ML process in background
+    success, message = start_ml_process(session_id, config)
+    
+    if success:
+        # Update metadata
+        metadata["ml_status"] = "training"
+        metadata["ml_start_time"] = datetime.now().isoformat()
+        metadata["ml_config"] = config
+        
+        # Save metadata
+        with open(os.path.join(session_path, "metadata.json"), "w") as f:
+            json.dump(metadata, f, indent=2)
+        
+        return jsonify({
+            "message": "Training started", 
+            "session_id": session_id
+        })
+    else:
+        return jsonify({"error": message}), 500
+
+@app.route("/api/training-status/<session_id>")
+def training_status(session_id):
+    """
+    API endpoint to get the current status of ML training
+    """
+    # Validate session exists
+    session_path = os.path.join(app.config["UPLOAD_FOLDER"], session_id)
+    if not os.path.exists(session_path):
+        return jsonify({"error": "Invalid session ID"}), 404
+    
+    # Load session metadata
+    try:
+        with open(os.path.join(session_path, "metadata.json"), "r") as f:
+            metadata = json.load(f)
+    except Exception:
+        return jsonify({"error": "Failed to load session metadata"}), 500
+    
+    # Check if ML process is running
+    is_active = session_id in active_processes
+    
+    # Get status from metadata
+    status = metadata.get("ml_status", "not_started")
+    
+    return jsonify({
+        "session_id": session_id,
+        "status": status,
+        "is_active": is_active,
+        "ml_config": metadata.get("ml_config", {}),
+        "ml_metrics": metadata.get("ml_metrics", {}),
+        "ml_start_time": metadata.get("ml_start_time"),
+        "ml_completion_time": metadata.get("ml_completion_time"),
+        "mlflow_run_id": metadata.get("mlflow_run_id")
+    })
+
+@socketio.on('ml_connect')
+def on_ml_connect(data):
+    """
+    Socket.IO event for connecting to ML updates
+    """
+    session_id = data.get('session_id')
+    if session_id:
+        print(f"Client connected for ML updates on session {session_id}")
+        join_room(session_id)

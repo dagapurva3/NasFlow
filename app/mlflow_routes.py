@@ -56,12 +56,16 @@ def proxy(path):
         "content-length",
         "transfer-encoding",
         "connection",
+        "x-frame-options",  # Remove X-Frame-Options to allow embedding
     ]
     headers = [
         (name, value)
         for (name, value) in resp.raw.headers.items()
         if name.lower() not in excluded_headers
     ]
+
+    # Add header to allow embedding in iframe
+    headers.append(("X-Frame-Options", "SAMEORIGIN"))
 
     # Handle different content types
     content = resp.content

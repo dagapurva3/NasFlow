@@ -7,7 +7,7 @@ from .mlflow_routes import mlflow_bp  # Add this import
 app = Flask(__name__)
 app.config.from_pyfile("../config.py")
 executor = Executor(app)
-socketio = SocketIO(app, async_mode="threading")
+socketio = SocketIO(app)
 
 # Register the MLflow blueprint
 app.register_blueprint(mlflow_bp)
