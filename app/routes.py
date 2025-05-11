@@ -3,6 +3,7 @@ import uuid
 from datetime import datetime
 import json
 import traceback
+import time
 
 from flask import jsonify, render_template, request, send_from_directory, redirect, url_for
 from werkzeug.utils import secure_filename
@@ -104,7 +105,7 @@ def handle_upload():
 def handle_extraction(session_id, file_path, save_path, filename):
     """Background task to handle extraction and analysis"""
     try:
-        # Load current metadata
+        # Create extraction log in metadata
         metadata_path = os.path.join(save_path, "metadata.json")
         with open(metadata_path, "r") as f:
             metadata = json.load(f)
@@ -112,58 +113,90 @@ def handle_extraction(session_id, file_path, save_path, filename):
         # Update status
         metadata["status"] = "extracting"
         metadata["extraction_start_time"] = datetime.now().isoformat()
+        metadata["extraction_log"] = []  # Add log container
         create_processing_session(session_id, metadata)
         
-        # Emit status update
-        socketio.emit('extraction_update', {
-            'status': 'extracting',
-            'message': f'Extracting {filename}...',
-            'progress': 10
-        }, room=session_id)
+        # Define progress callback function
+        def update_extraction_progress(status, message, progress, details=None):
+            # Add to log
+            log_entry = {
+                "timestamp": datetime.now().isoformat(),
+                "status": status,
+                "message": message,
+                "progress": progress
+            }
+            if details:
+                log_entry["details"] = details
+                
+            # Update metadata with latest log entry
+            with open(metadata_path, "r") as f:
+                current_metadata = json.load(f)
+            
+            # Keep log from growing too large (retain last 50 entries)
+            if "extraction_log" not in current_metadata:
+                current_metadata["extraction_log"] = []
+                
+            current_metadata["extraction_log"].append(log_entry)
+            if len(current_metadata["extraction_log"]) > 50:
+                current_metadata["extraction_log"] = current_metadata["extraction_log"][-50:]
+            
+            create_processing_session(session_id, current_metadata)
+            
+            # Emit status update via Socket.IO
+            socketio.emit('extraction_update', {
+                'status': status,
+                'message': message,
+                'progress': progress,
+                'details': details
+            }, room=session_id)
         
-        # Extract the archive
-        success = extract_archive(file_path, save_path)
+        # Emit initial status update
+        update_extraction_progress('extracting', f'Extracting {filename}...', 10)
+        
+        # Extract the archive with progress updates
+        success = extract_archive(file_path, save_path, update_extraction_progress)
         
         if not success:
             metadata["status"] = "extraction_failed"
             metadata["extraction_error"] = "Failed to extract archive"
             create_processing_session(session_id, metadata)
             
-            socketio.emit('extraction_update', {
-                'status': 'failed',
-                'message': 'Extraction failed',
-                'progress': 0
-            }, room=session_id)
+            # Final status update is handled by extract_archive on failure
             return
         
-        # Update status
-        socketio.emit('extraction_update', {
-            'status': 'analyzing',
-            'message': 'Analyzing extracted files...',
-            'progress': 50
-        }, room=session_id)
+        # Update status for analysis phase
+        update_extraction_progress('analyzing', 'Analyzing extracted files...', 50)
         
         # Analyze the extracted data
+        analysis_start = time.time()
         analysis = analyze_uploaded_dataset(save_path)
+        analysis_duration = time.time() - analysis_start
+        
+        update_extraction_progress('analyzing', f'Analysis complete. Found {analysis["image_count"]} images in {len(analysis["classes"])} classes.', 80, {
+            'image_count': analysis["image_count"],
+            'classes': len(analysis["classes"]),
+            'duration_seconds': round(analysis_duration, 2)
+        })
+        
+        # Update metadata with analysis results
         metadata.update(analysis)
         metadata["status"] = "ready_for_preprocessing"
         metadata["extraction_end_time"] = datetime.now().isoformat()
         create_processing_session(session_id, metadata)
         
         # Final update
-        socketio.emit('extraction_update', {
-            'status': 'complete',
-            'message': 'Extraction complete',
-            'progress': 100,
+        update_extraction_progress('complete', 'Extraction and analysis complete', 100, {
+            'image_count': analysis["image_count"],
+            'classes': len(analysis["classes"]),
             'redirect': f"/preprocessing/{session_id}"
-        }, room=session_id)
+        })
         
         # Update global status
         extraction_status[session_id] = "complete"
         
     except Exception as e:
         print(f"Extraction error: {str(e)}")
-        traceback.print_exc()
+        error_details = traceback.format_exc()
         
         # Update metadata with error
         try:
@@ -172,15 +205,20 @@ def handle_extraction(session_id, file_path, save_path, filename):
             
             metadata["status"] = "extraction_failed"
             metadata["extraction_error"] = str(e)
+            metadata["extraction_error_details"] = error_details
             create_processing_session(session_id, metadata)
-        except Exception:
-            pass
+        except Exception as inner_e:
+            print(f"Error updating metadata: {str(inner_e)}")
         
         # Emit error update
         socketio.emit('extraction_update', {
             'status': 'failed',
             'message': f'Extraction failed: {str(e)}',
-            'progress': 0
+            'progress': 0,
+            'details': {
+                'error': str(e),
+                'traceback': error_details
+            }
         }, room=session_id)
         
         # Update global status

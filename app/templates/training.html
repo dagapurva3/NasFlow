@@ -3,7 +3,7 @@
 {% block title %}ML Training{% endblock %}
 
 {% block content %}
-<div class="container mt-4">
+<div class="container-fluid mt-4">
     <h2>ML Training - Session {{ session_id }}</h2>
     
     <div class="row mb-4">
@@ -18,8 +18,16 @@
         </div>
     </div>
     
+    <!-- Error alert container (hidden by default) -->
+    <div id="error-container" class="alert alert-danger mb-4" style="display: none;">
+        <h5 class="alert-heading">Error</h5>
+        <p id="error-message"></p>
+        <hr>
+        <p class="mb-0">Please check the logs or try again.</p>
+    </div>
+    
     <div class="row mb-4">
-        <div class="col-12">
+        <div class="col-md-4">
             <div class="card">
                 <div class="card-header">
                     <h5 class="mb-0">Training Configuration</h5>
@@ -89,78 +97,107 @@
                     </form>
                 </div>
             </div>
-        </div>
-    </div>
-    
-    <div id="training-progress" class="mb-4" style="display: none;">
-        <div class="card">
-            <div class="card-header">
-                <h5 class="mb-0">Training Progress</h5>
+            
+            <!-- Log Panel -->
+            <div class="card mt-3">
+                <div class="card-header d-flex justify-content-between">
+                    <h5 class="mb-0">Runtime Logs</h5>
+                    <button class="btn btn-sm btn-secondary" id="clear-logs-btn">Clear</button>
+                </div>
+                <div class="card-body p-0">
+                    <div id="runtime-logs" style="height: 300px; overflow-y: auto; font-family: monospace; font-size: 12px; padding: 10px; background-color: #f8f9fa;"></div>
+                </div>
             </div>
-            <div class="card-body">
-                <div class="progress mb-3">
-                    <div class="progress-bar progress-bar-striped progress-bar-animated" 
-                         id="training-progress-bar" role="progressbar" 
-                         style="width: 0%" aria-valuenow="0" aria-valuemin="0" 
-                         aria-valuemax="100">0%</div>
-                </div>
-                
-                <div id="training-message" class="mb-3">Initializing...</div>
-                
-                <div id="metrics-container" class="row" style="display: none;">
-                    <div class="col-md-6">
-                        <div class="card">
-                            <div class="card-header">
-                                <h6 class="mb-0">Training Metrics</h6>
-                            </div>
-                            <div class="card-body">
-                                <table class="table table-sm">
-                                    <tr>
-                                        <td>Training Loss:</td>
-                                        <td id="train-loss">-</td>
-                                    </tr>
-                                    <tr>
-                                        <td>Validation Loss:</td>
-                                        <td id="val-loss">-</td>
-                                    </tr>
-                                    <tr>
-                                        <td>Training Accuracy:</td>
-                                        <td id="train-acc">-</td>
-                                    </tr>
-                                    <tr>
-                                        <td>Validation Accuracy:</td>
-                                        <td id="val-acc">-</td>
-                                    </tr>
-                                </table>
+        </div>
+        
+        <div class="col-md-8">
+            <div id="training-progress" class="mb-4" style="display: none;">
+                <div class="card">
+                    <div class="card-header">
+                        <h5 class="mb-0">Training Progress</h5>
+                    </div>
+                    <div class="card-body">
+                        <div class="progress mb-3">
+                            <div class="progress-bar progress-bar-striped progress-bar-animated" 
+                                id="training-progress-bar" role="progressbar" 
+                                style="width: 0%" aria-valuenow="0" aria-valuemin="0" 
+                                aria-valuemax="100">0%</div>
+                        </div>
+                        
+                        <div id="training-message" class="mb-3 alert alert-info">Initializing...</div>
+                        
+                        <!-- Training Metrics & MLflow UI integrated -->
+                        <div class="row">
+                            <div class="col-md-12">
+                                <ul class="nav nav-tabs" id="trainingTabs" role="tablist">
+                                    <li class="nav-item" role="presentation">
+                                        <button class="nav-link active" id="metrics-tab" data-bs-toggle="tab" data-bs-target="#metrics" type="button">Metrics</button>
+                                    </li>
+                                    <li class="nav-item" role="presentation">
+                                        <button class="nav-link" id="mlflow-tab" data-bs-toggle="tab" data-bs-target="#mlflow" type="button">MLflow Dashboard</button>
+                                    </li>
+                                </ul>
+                                
+                                <div class="tab-content p-3 border border-top-0 rounded-bottom" style="min-height: 400px;">
+                                    <div class="tab-pane fade show active" id="metrics" role="tabpanel">
+                                        <div id="metrics-container" class="row mt-3">
+                                            <div class="col-md-6">
+                                                <div class="card">
+                                                    <div class="card-header">
+                                                        <h6 class="mb-0">Training Metrics</h6>
+                                                    </div>
+                                                    <div class="card-body">
+                                                        <table class="table table-sm">
+                                                            <tr>
+                                                                <td>Training Loss:</td>
+                                                                <td id="train-loss">-</td>
+                                                            </tr>
+                                                            <tr>
+                                                                <td>Validation Loss:</td>
+                                                                <td id="val-loss">-</td>
+                                                            </tr>
+                                                            <tr>
+                                                                <td>Training Accuracy:</td>
+                                                                <td id="train-acc">-</td>
+                                                            </tr>
+                                                            <tr>
+                                                                <td>Validation Accuracy:</td>
+                                                                <td id="val-acc">-</td>
+                                                            </tr>
+                                                        </table>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            
+                                            <div class="col-md-6">
+                                                <div class="card">
+                                                    <div class="card-header">
+                                                        <h6 class="mb-0">Final Metrics</h6>
+                                                    </div>
+                                                    <div class="card-body">
+                                                        <table class="table table-sm">
+                                                            <tr>
+                                                                <td>Accuracy:</td>
+                                                                <td id="final-accuracy">-</td>
+                                                            </tr>
+                                                            <tr>
+                                                                <td>F1 Score:</td>
+                                                                <td id="final-f1">-</td>
+                                                            </tr>
+                                                        </table>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    
+                                    <div class="tab-pane fade" id="mlflow" role="tabpanel">
+                                        <iframe id="mlflow-iframe" src="/mlflow" style="width: 100%; height: 600px; border: none;"></iframe>
+                                    </div>
+                                </div>
                             </div>
                         </div>
                     </div>
-                    
-                    <div class="col-md-6">
-                        <div class="card">
-                            <div class="card-header">
-                                <h6 class="mb-0">Final Metrics</h6>
-                            </div>
-                            <div class="card-body">
-                                <table class="table table-sm">
-                                    <tr>
-                                        <td>Accuracy:</td>
-                                        <td id="final-accuracy">-</td>
-                                    </tr>
-                                    <tr>
-                                        <td>F1 Score:</td>
-                                        <td id="final-f1">-</td>
-                                    </tr>
-                                </table>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-                
-                <div id="mlflow-link-container" class="mt-3" style="display: none;">
-                    <a id="mlflow-link" href="#" class="btn btn-info" target="_blank">
-                        View in MLflow
-                    </a>
                 </div>
             </div>
         </div>
@@ -176,14 +213,43 @@
         const progressBar = document.getElementById('training-progress-bar');
         const messageEl = document.getElementById('training-message');
         const metricsContainer = document.getElementById('metrics-container');
-        const mlflowLinkContainer = document.getElementById('mlflow-link-container');
-        const mlflowLink = document.getElementById('mlflow-link');
+        const errorContainer = document.getElementById('error-container');
+        const errorMessage = document.getElementById('error-message');
+        const mlflowIframe = document.getElementById('mlflow-iframe');
+        const runtimeLogs = document.getElementById('runtime-logs');
+        const clearLogsBtn = document.getElementById('clear-logs-btn');
+        
+        // Clear logs button
+        clearLogsBtn.addEventListener('click', function() {
+            runtimeLogs.innerHTML = '';
+        });
+        
+        // Function to add log entry
+        function addLogEntry(message, type = 'info') {
+            const logEntry = document.createElement('div');
+            logEntry.classList.add('log-entry');
+            
+            // Color code based on message type
+            if (type === 'error') {
+                logEntry.style.color = '#dc3545';
+            } else if (type === 'success') {
+                logEntry.style.color = '#198754';
+            } else if (type === 'warning') {
+                logEntry.style.color = '#ffc107';
+            }
+            
+            const timestamp = new Date().toLocaleTimeString();
+            logEntry.innerHTML = `<span class="text-muted">[${timestamp}]</span> ${message}`;
+            runtimeLogs.appendChild(logEntry);
+            runtimeLogs.scrollTop = runtimeLogs.scrollHeight;
+        }
         
         // Socket.IO connection
         const socket = io();
         
         // Join the ML room for this session
         socket.emit('ml_connect', { session_id: sessionId });
+        addLogEntry(`Connected to session: ${sessionId}`);
         
         // Check initial status
         checkTrainingStatus();
@@ -191,11 +257,27 @@
         // Listen for ML status updates
         socket.on('ml_status', function(data) {
             updateUIWithStatus(data);
+            
+            // Log the status update
+            addLogEntry(`${data.status}: ${data.message}`);
+            
+            // Log metrics if available
+            if (data.metrics) {
+                if (data.metrics.train_loss !== undefined) {
+                    addLogEntry(`Training Loss: ${data.metrics.train_loss.toFixed(4)}`);
+                }
+                if (data.metrics.val_acc !== undefined) {
+                    addLogEntry(`Validation Accuracy: ${(data.metrics.val_acc * 100).toFixed(2)}%`);
+                }
+            }
         });
         
         // Form submission
         form.addEventListener('submit', function(e) {
             e.preventDefault();
+            
+            // Reset error state
+            errorContainer.style.display = 'none';
             
             // Disable form
             startBtn.disabled = true;
@@ -207,7 +289,10 @@
             
             for (const [key, value] of formData.entries()) {
                 config[key] = value;
+                addLogEntry(`Config: ${key} = ${value}`);
             }
+            
+            addLogEntry('Starting training process...', 'info');
             
             // Start training
             fetch(`/api/train/${sessionId}`, {
@@ -220,102 +305,157 @@
             .then(response => response.json())
             .then(data => {
                 if (data.error) {
-                    alert(`Error: ${data.error}`);
-                    startBtn.disabled = false;
-                    startBtn.innerHTML = 'Start Training';
+                    addLogEntry(`Error: ${data.error}`, 'error');
+                    showError(data.error);
                 } else {
                     // Show progress section
                     progressSection.style.display = 'block';
                     form.disabled = true;
+                    addLogEntry(`Training started: ${data.message}`, 'success');
                 }
             })
             .catch(error => {
                 console.error('Error:', error);
-                alert('Failed to start training');
-                startBtn.disabled = false;
-                startBtn.innerHTML = 'Start Training';
+                addLogEntry(`Failed to start training: ${error}`, 'error');
+                showError('Failed to start training');
             });
         });
+        
+        // Function to show errors
+        function showError(msg) {
+            errorMessage.textContent = msg;
+            errorContainer.style.display = 'block';
+            startBtn.disabled = false;
+            startBtn.innerHTML = 'Start Training';
+            startBtn.classList.remove('btn-primary');
+            startBtn.classList.add('btn-danger');
+            
+            // Add to logs
+            addLogEntry(`ERROR: ${msg}`, 'error');
+            
+            // Reset button appearance after 5 seconds
+            setTimeout(() => {
+                startBtn.classList.remove('btn-danger');
+                startBtn.classList.add('btn-primary');
+            }, 5000);
+        }
         
         // Function to check training status
         function checkTrainingStatus() {
             fetch(`/api/training-status/${sessionId}`)
                 .then(response => response.json())
                 .then(data => {
+                    // Add to logs 
+                    addLogEntry(`Current status: ${data.status}`);
+                    
+                    // Log any configuration data
+                    if (data.ml_config && data.ml_config.ml_logs) {
+                        for (const log of data.ml_config.ml_logs) {
+                            addLogEntry(`Setup: ${log}`, 'info');
+                        }
+                    }
+                    
                     if (data.status === 'training' || data.status === 'complete') {
                         // Training is in progress or complete
                         progressSection.style.display = 'block';
                         form.disabled = true;
                         startBtn.disabled = true;
                         
-                        if (data.status === 'complete') {
-                            // Training is complete
-                            updateUIWithFinalMetrics(data);
+                        if (data.is_active || data.status === 'training') {
+                            startBtn.innerHTML = 'Training in Progress...';
+                        } else if (data.status === 'complete') {
+                            startBtn.innerHTML = 'Training Complete';
+                            
+                            // Activate MLflow tab when training is complete
+                            document.getElementById('mlflow-tab').click();
+                            
+                            // Update iframe URL to point to the specific run if available
+                            if (data.mlflow_run_id) {
+                                mlflowIframe.src = `/mlflow/#/experiments/1/runs/${data.mlflow_run_id}`;
+                                addLogEntry(`MLflow run: ${data.mlflow_run_id}`, 'success');
+                            }
                         }
+                        
+                        // Update UI with existing data
+                        updateUIWithStatus(data);
+                    } else if (data.status === 'failed') {
+                        // Show error if training failed
+                        showError(data.error || 'Training failed');
                     }
                 })
                 .catch(error => {
                     console.error('Error checking status:', error);
+                    addLogEntry(`Error checking status: ${error}`, 'error');
                 });
         }
         
-        // Function to update UI with status
+        // Function to update UI with status data
         function updateUIWithStatus(data) {
+            if (data.status === 'failed') {
+                // Handle failure
+                progressBar.classList.remove('bg-info', 'bg-success');
+                progressBar.classList.add('bg-danger');
+                progressBar.style.width = '100%';
+                progressBar.innerHTML = 'Failed';
+                messageEl.textContent = data.message || 'Training failed';
+                messageEl.className = 'mb-3 alert alert-danger';
+                
+                // Show error
+                showError(data.message || 'Training failed');
+                return;
+            }
+            
             // Update progress bar
-            const progress = data.progress || 0;
-            progressBar.style.width = `${progress}%`;
-            progressBar.textContent = `${progress}%`;
-            progressBar.setAttribute('aria-valuenow', progress);
+            progressBar.style.width = data.progress + '%';
+            progressBar.innerHTML = data.progress + '%';
             
             // Update message
             messageEl.textContent = data.message || 'Processing...';
-            
-            // Handle different statuses
-            if (data.status === 'processing') {
-                metricsContainer.style.display = 'flex';
-                
-                // Update metrics if available
-                if (data.metrics) {
-                    document.getElementById('train-loss').textContent = 
-                        data.metrics.train_loss ? data.metrics.train_loss.toFixed(4) : '-';
-                    document.getElementById('val-loss').textContent = 
-                        data.metrics.val_loss ? data.metrics.val_loss.toFixed(4) : '-';
-                    document.getElementById('train-acc').textContent = 
-                        data.metrics.train_acc ? (data.metrics.train_acc * 100).toFixed(2) + '%' : '-';
-                    document.getElementById('val-acc').textContent = 
-                        data.metrics.val_acc ? (data.metrics.val_acc * 100).toFixed(2) + '%' : '-';
-                }
-            } else if (data.status === 'complete') {
-                // Training complete
-                progressBar.classList.remove('progress-bar-animated');
-                progressBar.classList.remove('progress-bar-striped');
-                progressBar.classList.add('bg-success');
-                
-                updateUIWithFinalMetrics(data);
-            } else if (data.status === 'failed') {
-                // Training failed
-                progressBar.classList.remove('progress-bar-animated');
-                progressBar.classList.remove('progress-bar-striped');
-                progressBar.classList.add('bg-danger');
-                messageEl.innerHTML = `<strong>Error:</strong> ${data.message}`;
-            }
-        }
-        
-        // Function to update UI with final metrics
-        function updateUIWithFinalMetrics(data) {
-            metricsContainer.style.display = 'flex';
+            messageEl.className = 'mb-3 alert alert-info';
             
             if (data.metrics) {
-                document.getElementById('final-accuracy').textContent = 
-                    data.metrics.accuracy ? (data.metrics.accuracy * 100).toFixed(2) + '%' : '-';
-                document.getElementById('final-f1').textContent = 
-                    data.metrics.f1_score ? data.metrics.f1_score.toFixed(4) : '-';
+                // Show metrics
+                metricsContainer.style.display = 'block';
+                
+                // Update training metrics if available
+                if (data.metrics.train_loss !== undefined) {
+                    document.getElementById('train-loss').textContent = data.metrics.train_loss.toFixed(4);
+                }
+                if (data.metrics.val_loss !== undefined) {
+                    document.getElementById('val-loss').textContent = data.metrics.val_loss.toFixed(4);
+                }
+                if (data.metrics.train_acc !== undefined) {
+                    document.getElementById('train-acc').textContent = (data.metrics.train_acc * 100).toFixed(2) + '%';
+                }
+                if (data.metrics.val_acc !== undefined) {
+                    document.getElementById('val-acc').textContent = (data.metrics.val_acc * 100).toFixed(2) + '%';
+                }
+                
+                // Update final metrics if available
+                if (data.metrics.accuracy !== undefined) {
+                    document.getElementById('final-accuracy').textContent = (data.metrics.accuracy * 100).toFixed(2) + '%';
+                }
+                if (data.metrics.f1_score !== undefined) {
+                    document.getElementById('final-f1').textContent = data.metrics.f1_score.toFixed(4);
+                }
             }
             
-            // Show MLflow link if run_id is available
-            if (data.mlflow_run_id) {
-                mlflowLinkContainer.style.display = 'block';
-                mlflowLink.href = `/mlflow/#/experiments/${data.mlflow_run_id}`;
+            if (data.status === 'complete') {
+                // Training is complete
+                addLogEntry('Training completed successfully!', 'success');
+                startBtn.innerHTML = 'Training Complete';
+                startBtn.disabled = true;
+                progressBar.classList.remove('progress-bar-animated', 'progress-bar-striped');
+                progressBar.classList.add('bg-success');
+                messageEl.className = 'mb-3 alert alert-success';
+                
+                // Switch to MLflow tab
+                document.getElementById('mlflow-tab').click();
+                
+                // Update iframe URL to point to the specific run if available
+                if (data.mlflow_run_id) {
+                    mlflowIframe.src = `/mlflow/#/experiments/1/runs/${data.mlflow_run_id}`;
+                }
             }
         }
     });

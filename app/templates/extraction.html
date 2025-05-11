@@ -15,6 +15,74 @@
     
     <div id="extraction-status-message" class="mb-3"></div>
     
+    <!-- Detailed extraction info -->
+    <div class="row mb-4">
+        <div class="col-md-6">
+            <div class="card">
+                <div class="card-header">
+                    <h5 class="mb-0">Extraction Details</h5>
+                </div>
+                <div class="card-body">
+                    <table class="table table-sm">
+                        <tr>
+                            <td>Status:</td>
+                            <td id="extraction-status">Initializing...</td>
+                        </tr>
+                        <tr>
+                            <td>Current operation:</td>
+                            <td id="current-operation">-</td>
+                        </tr>
+                        <tr>
+                            <td>Files extracted:</td>
+                            <td id="files-extracted">-</td>
+                        </tr>
+                        <tr>
+                            <td>Current file:</td>
+                            <td id="current-file" class="text-truncate" style="max-width: 250px;">-</td>
+                        </tr>
+                        <tr>
+                            <td>Images found:</td>
+                            <td id="images-found">-</td>
+                        </tr>
+                        <tr>
+                            <td>Classes found:</td>
+                            <td id="classes-found">-</td>
+                        </tr>
+                    </table>
+                </div>
+            </div>
+        </div>
+        
+        <div class="col-md-6">
+            <div class="card">
+                <div class="card-header">
+                    <h5 class="mb-0">Extraction Log</h5>
+                </div>
+                <div class="card-body">
+                    <div id="extraction-log" style="height: 200px; overflow-y: auto; font-family: monospace; font-size: 12px;"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Error details section (hidden by default) -->
+    <div id="error-details-card" class="card mb-4" style="display: none;">
+        <div class="card-header bg-danger text-white">
+            <h5 class="mb-0">Error Details</h5>
+        </div>
+        <div class="card-body">
+            <div id="error-message" class="alert alert-danger"></div>
+            <div class="card">
+                <div class="card-header">
+                    <h6 class="mb-0">Stack Trace</h6>
+                </div>
+                <div class="card-body">
+                    <pre id="error-traceback" style="max-height: 300px; overflow-y: auto;"></pre>
+                </div>
+            </div>
+        </div>
+    </div>
+    
     <div id="extraction-actions" style="display: none;">
         <a id="continue-button" href="/preprocessing/{{ session_id }}" class="btn btn-primary">
             Continue to Preprocessing
@@ -28,11 +96,27 @@
         const socket = io();
         socket.emit('join', { session_id: '{{ session_id }}' });
         
+        const progressBar = document.getElementById('extraction-progress-bar');
+        const message = document.getElementById('extraction-message');
+        const statusMessage = document.getElementById('extraction-status-message');
+        const actions = document.getElementById('extraction-actions');
+        
+        // Detailed extraction elements
+        const extractionStatus = document.getElementById('extraction-status');
+        const currentOperation = document.getElementById('current-operation');
+        const filesExtracted = document.getElementById('files-extracted');
+        const currentFile = document.getElementById('current-file');
+        const imagesFound = document.getElementById('images-found');
+        const classesFound = document.getElementById('classes-found');
+        const extractionLog = document.getElementById('extraction-log');
+        
+        // Error elements
+        const errorDetailsCard = document.getElementById('error-details-card');
+        const errorMessage = document.getElementById('error-message');
+        const errorTraceback = document.getElementById('error-traceback');
+        
         socket.on('extraction_update', function(data) {
-            const progressBar = document.getElementById('extraction-progress-bar');
-            const message = document.getElementById('extraction-message');
-            const statusMessage = document.getElementById('extraction-status-message');
-            const actions = document.getElementById('extraction-actions');
+            console.log('Received update:', data);
             
             // Update progress bar
             progressBar.style.width = data.progress + '%';
@@ -42,16 +126,79 @@
             // Update message
             message.textContent = data.message;
             
+            // Update extraction status
+            extractionStatus.textContent = data.status.charAt(0).toUpperCase() + data.status.slice(1);
+            currentOperation.textContent = data.message;
+            
+            // Add log entry
+            const logTime = new Date().toLocaleTimeString();
+            const logEntry = document.createElement('div');
+            logEntry.className = 'log-entry';
+            
+            // Color code log entries based on status
+            if (data.status === 'failed') {
+                logEntry.style.color = 'red';
+            } else if (data.status === 'complete') {
+                logEntry.style.color = 'green';
+            }
+            
+            logEntry.textContent = `[${logTime}] ${data.status}: ${data.message}`;
+            extractionLog.appendChild(logEntry);
+            extractionLog.scrollTop = extractionLog.scrollHeight;
+            
+            // Update detailed information if available
+            if (data.details) {
+                if (data.details.extracted && data.details.total) {
+                    filesExtracted.textContent = `${data.details.extracted} / ${data.details.total}`;
+                }
+                
+                if (data.details.current_file) {
+                    currentFile.textContent = data.details.current_file;
+                    currentFile.title = data.details.current_file; // For tooltip on hover
+                }
+                
+                if (data.details.image_count) {
+                    imagesFound.textContent = data.details.image_count;
+                }
+                
+                if (data.details.classes) {
+                    classesFound.textContent = data.details.classes;
+                }
+                
+                // Handle error details
+                if (data.details.error) {
+                    errorMessage.textContent = data.details.error;
+                    
+                    if (data.details.traceback) {
+                        errorTraceback.textContent = data.details.traceback;
+                        errorDetailsCard.style.display = 'block';
+                    }
+                }
+            }
+            
             // Handle different statuses
             if (data.status === 'complete') {
                 progressBar.classList.remove('progress-bar-animated');
+                progressBar.classList.remove('progress-bar-striped');
+                progressBar.classList.add('bg-success');
                 statusMessage.textContent = 'Extraction completed successfully.';
                 actions.style.display = 'block';
                 
+                // Add success log entry
+                const successEntry = document.createElement('div');
+                successEntry.className = 'log-entry';
+                successEntry.style.color = 'green';
+                successEntry.style.fontWeight = 'bold';
+                successEntry.textContent = `[${logTime}] ✓ EXTRACTION COMPLETE - Found ${imagesFound.textContent} images in ${classesFound.textContent} classes`;
+                extractionLog.appendChild(successEntry);
+                extractionLog.scrollTop = extractionLog.scrollHeight;
+                
                 // Auto-redirect after 3 seconds
-                setTimeout(function() {
-                    window.location.href = data.redirect;
-                }, 3000);
+                if (data.details && data.details.redirect) {
+                    setTimeout(function() {
+                        window.location.href = data.details.redirect;
+                    }, 3000);
+                }
             } 
             else if (data.status === 'failed') {
                 progressBar.classList.remove('progress-bar-animated');
@@ -59,6 +206,15 @@
                 progressBar.classList.add('bg-danger');
                 statusMessage.textContent = 'Extraction failed: ' + data.message;
                 statusMessage.style.color = 'red';
+                
+                // Add error log entry
+                const errorEntry = document.createElement('div');
+                errorEntry.className = 'log-entry';
+                errorEntry.style.color = 'red';
+                errorEntry.style.fontWeight = 'bold';
+                errorEntry.textContent = `[${logTime}] ✗ ERROR: ${data.message}`;
+                extractionLog.appendChild(errorEntry);
+                extractionLog.scrollTop = extractionLog.scrollHeight;
                 
                 const retryBtn = document.createElement('button');
                 retryBtn.className = 'btn btn-warning';

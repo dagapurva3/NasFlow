@@ -35,7 +35,8 @@ def run_ml_pipeline(session_id, config):
         socketio.emit('ml_status', {
             'status': 'starting',
             'message': 'Initializing ML pipeline...',
-            'progress': 5
+            'progress': 5,
+            'details': {'config': config}
         }, room=session_id)
         
         # Get session directory
@@ -49,6 +50,13 @@ def run_ml_pipeline(session_id, config):
         # Setup ML directories
         ml_data_dir = os.path.join(session_dir, "ml_data")
         os.makedirs(ml_data_dir, exist_ok=True)
+        
+        socketio.emit('ml_status', {
+            'status': 'processing',
+            'message': 'Created ML data directory',
+            'progress': 7,
+            'details': {'ml_data_dir': ml_data_dir}
+        }, room=session_id)
         
         # Create a directory structure for the ML pipeline
         images_dir = os.path.join(ml_data_dir, "Images")
@@ -67,30 +75,99 @@ def run_ml_pipeline(session_id, config):
         
         # Organize processed images into class folders
         class_dirs = {}
-        for file_info in metadata.get("files", []):
-            if file_info.get("type") == "image":
-                # Get class from path (assuming class is the parent directory)
-                file_path = file_info["path"]
-                class_name = os.path.dirname(file_path).split(os.path.sep)[0]
-                
-                # Create class directory if it doesn't exist
-                if class_name not in class_dirs:
-                    class_dir = os.path.join(images_dir, class_name)
-                    os.makedirs(class_dir, exist_ok=True)
-                    class_dirs[class_name] = class_dir
-                
-                # Copy the processed image to the class directory
-                src_path = os.path.join(processed_dir, file_path)
-                dst_path = os.path.join(images_dir, file_path)
-                os.makedirs(os.path.dirname(dst_path), exist_ok=True)
-                shutil.copy(src_path, dst_path)
+        log_entries = []
+        log_entries.append(f"Processing images from {processed_dir}")
+        
+        # First analyze directory structure to determine the actual class folders
+        potential_class_dirs = []
+        for item in os.listdir(processed_dir):
+            item_path = os.path.join(processed_dir, item)
+            if os.path.isdir(item_path) and item != "Images":
+                potential_class_dirs.append(item)
+        
+        log_entries.append(f"Detected potential class directories: {potential_class_dirs}")
+        
+        # If no class dirs found, check if images are directly in processed_dir
+        if not potential_class_dirs:
+            log_entries.append("No class directories found, assuming flat structure")
+            # Use image names or parent directory as pseudo-class
+            for file_info in metadata.get("files", []):
+                if file_info.get("type") == "image":
+                    class_name = "default_class"
+                    
+                    # Create class directory if it doesn't exist
+                    if class_name not in class_dirs:
+                        class_dir = os.path.join(images_dir, class_name)
+                        os.makedirs(class_dir, exist_ok=True)
+                        class_dirs[class_name] = class_dir
+                    
+                    # Copy the image
+                    src_path = os.path.join(processed_dir, file_info["path"])
+                    filename = os.path.basename(file_info["path"])
+                    dst_path = os.path.join(images_dir, class_name, filename)
+                    
+                    # Ensure directory exists
+                    os.makedirs(os.path.dirname(dst_path), exist_ok=True)
+                    
+                    try:
+                        shutil.copy2(src_path, dst_path)
+                        log_entries.append(f"Copied {filename} to {class_name} class")
+                    except Exception as e:
+                        log_entries.append(f"Error copying {filename}: {str(e)}")
+                        raise RuntimeError(f"Cannot copy file {filename}: {str(e)}")
+        else:
+            # Use detected class directories
+            for file_info in metadata.get("files", []):
+                if file_info.get("type") == "image":
+                    # Get class from path components
+                    file_path = file_info["path"]
+                    path_components = os.path.normpath(file_path).split(os.sep)
+                    
+                    # Find the first path component that matches a class directory
+                    class_name = None
+                    for component in path_components:
+                        if component in potential_class_dirs:
+                            class_name = component
+                            break
+                    
+                    # If no class found, use first directory component or default
+                    if not class_name and len(path_components) > 1:
+                        class_name = path_components[0]
+                    elif not class_name:
+                        class_name = "default_class"
+                    
+                    # Create class directory if it doesn't exist
+                    if class_name not in class_dirs:
+                        class_dir = os.path.join(images_dir, class_name)
+                        os.makedirs(class_dir, exist_ok=True)
+                        class_dirs[class_name] = class_dir
+                        log_entries.append(f"Created class directory for: {class_name}")
+                    
+                    # Copy the processed image to the class directory
+                    src_path = os.path.join(processed_dir, file_path)
+                    filename = os.path.basename(file_path)
+                    dst_path = os.path.join(images_dir, class_name, filename)
+                    
+                    # Ensure destination directory exists
+                    os.makedirs(os.path.dirname(dst_path), exist_ok=True)
+                    
+                    # Copy file with explicit error handling
+                    try:
+                        shutil.copy2(src_path, dst_path)
+                        log_entries.append(f"Copied {filename} to {class_name} class")
+                    except (PermissionError, FileNotFoundError) as e:
+                        log_entries.append(f"Error copying {filename}: {str(e)}")
+                        raise RuntimeError(f"Cannot copy file {filename}: {str(e)}")
         
         # Update number of classes in metadata
         num_classes = len(class_dirs)
+        log_entries.append(f"Final class count: {num_classes}, Classes: {list(class_dirs.keys())}")
+        
         metadata["ml_config"] = {
             "num_classes": num_classes,
             "class_dirs": list(class_dirs.keys()),
             "ml_data_dir": ml_data_dir,
+            "ml_logs": log_entries,
             **config
         }
         
@@ -111,16 +188,14 @@ def run_ml_pipeline(session_id, config):
             CustomImageDataset, 
             train_model, 
             create_model, 
-            predict_and_evaluate,
-            NUM_CLASSES
+            predict_and_evaluate
         )
         
         # Apply our adapter to the train_model function
         train_model = adapter_for_train_model(train_model)
         
-        # Override the NUM_CLASSES global variable
-        import test2
-        test2.NUM_CLASSES = num_classes
+        # No need to override global variables that don't exist
+        # Just use the num_classes we already have
         
         # Create label CSVs
         csv_dir = os.path.join(ml_data_dir, "csv")
@@ -129,7 +204,12 @@ def run_ml_pipeline(session_id, config):
         socketio.emit('ml_status', {
             'status': 'processing',
             'message': 'Creating label CSVs...',
-            'progress': 25
+            'progress': 25,
+            'details': {
+                'num_classes': num_classes,
+                'classes': list(class_dirs.keys()),
+                'csv_dir': csv_dir
+            }
         }, room=session_id)
         
         # Create label CSVs from the organized images
@@ -202,7 +282,11 @@ def run_ml_pipeline(session_id, config):
             socketio.emit('ml_status', {
                 'status': 'processing',
                 'message': 'Creating data loaders...',
-                'progress': 30
+                'progress': 30, 
+                'details': {
+                    'train_csv': os.path.join(csv_dir, "train_labels.csv"),
+                    'val_csv': os.path.join(csv_dir, "val_labels.csv")
+                }
             }, room=session_id)
             
             try:
@@ -232,11 +316,26 @@ def run_ml_pipeline(session_id, config):
                     num_workers=2,
                 )
                 
+                socketio.emit('ml_status', {
+                    'status': 'processing',
+                    'message': f'Created data loaders with {len(train_dataset)} training and {len(val_dataset)} validation samples',
+                    'progress': 33,
+                    'details': {
+                        'train_samples': len(train_dataset),
+                        'val_samples': len(val_dataset)
+                    }
+                }, room=session_id)
+                
                 # Create model
                 socketio.emit('ml_status', {
                     'status': 'processing',
-                    'message': f'Creating {model_type} model...',
-                    'progress': 35
+                    'message': f'Creating {model_type} model with {num_classes} classes...',
+                    'progress': 35,
+                    'details': {
+                        'model': model_type,
+                        'num_classes': num_classes,
+                        'dropout': dropout_rate
+                    }
                 }, room=session_id)
                 
                 model = create_model(model_type, num_classes, dropout_rate)
@@ -247,6 +346,17 @@ def run_ml_pipeline(session_id, config):
                     optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
                 else:
                     optimizer = torch.optim.SGD(model.parameters(), lr=learning_rate, momentum=0.9)
+                
+                socketio.emit('ml_status', {
+                    'status': 'processing',
+                    'message': f'Configured {optimizer_name} optimizer with learning rate {learning_rate}',
+                    'progress': 37,
+                    'details': {
+                        'optimizer': optimizer_name,
+                        'lr': learning_rate,
+                        'device': str(device)
+                    }
+                }, room=session_id)
                 
                 # Initialize tensorboard writer
                 from torch.utils.tensorboard import SummaryWriter
