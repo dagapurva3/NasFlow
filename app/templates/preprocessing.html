@@ -118,7 +118,7 @@ document.addEventListener('DOMContentLoaded', function() {
     
     // Form submission handler
     form.addEventListener('submit', async function(e) {
-        e.preventDefault();
+    e.preventDefault();
         
         // Disable submit button
         startBtn.disabled = true;
@@ -141,38 +141,38 @@ document.addEventListener('DOMContentLoaded', function() {
         
         // Get form data
         const formData = new FormData(form);
-        const config = {};
-        
-        // Convert form data to proper types
-        for (const [key, value] of formData.entries()) {
-            if (key.startsWith('random_')) {
-                // Convert checkboxes to booleans
-                config[key] = value === 'on';
-            } else if (key.includes('_mean') || key.includes('_std')) {
-                // Convert comma-separated values to arrays
-                config[key] = value.split(',').map(v => parseFloat(v.trim()));
-            } else if (!isNaN(value)) {
-                // Convert numbers to numbers
-                config[key] = parseFloat(value);
-            } else {
-                config[key] = value;
-            }
+    const config = {};
+    
+    // Convert form data to proper types
+    for (const [key, value] of formData.entries()) {
+        if (key.startsWith('random_')) {
+            // Convert checkboxes to booleans
+            config[key] = value === 'on';
+        } else if (key.includes('_mean') || key.includes('_std')) {
+            // Convert comma-separated values to arrays
+            config[key] = value.split(',').map(v => parseFloat(v.trim()));
+        } else if (!isNaN(value)) {
+            // Convert numbers to numbers
+            config[key] = parseFloat(value);
+        } else {
+            config[key] = value;
         }
+    }
+    
+    try {
+        const response = await fetch(`/api/preprocess/{{ session_id }}`, {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify(config)
+        });
         
-        try {
-            const response = await fetch(`/api/preprocess/{{ session_id }}`, {
-                method: 'POST',
-                headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify(config)
-            });
-            
             if (!response.ok) {
-                const errorData = await response.json();
-                throw new Error(errorData.error || 'Failed to start preprocessing');
-            }
+            const errorData = await response.json();
+            throw new Error(errorData.error || 'Failed to start preprocessing');
+        }
             
             // Processing started successfully - updates will come via Socket.IO
-        } catch (error) {
+    } catch (error) {
             console.error('Error:', error);
             progressMsg.textContent = error.message;
             startBtn.disabled = false;

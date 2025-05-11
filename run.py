@@ -20,7 +20,7 @@ def main():
     try:
         # Start Flask application
         logger.info("Starting Flask-SocketIO server")
-        socketio.run(app, host="0.0.0.0", port=8080, debug=True, use_reloader=True)
+        socketio.run(app, host="0.0.0.0", port=8080, debug=False, use_reloader=False)
     except KeyboardInterrupt:
         # Gracefully shutdown both servers
         logger.info("Shutting down servers")
